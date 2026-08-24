@@ -18,9 +18,6 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
-[project.optional-dependencies]
-cli = ["click>=8.0"]
-
 [project.scripts]
 windcalm = "create_windcalm_ble.cli:main"
 

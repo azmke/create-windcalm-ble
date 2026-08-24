@@ -217,6 +217,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-device-info.json
-bugreport*/
-bugreport*.zip
+data/

@@ -22,8 +22,6 @@ import struct
 import sys
 from pathlib import Path
 
-from Crypto.Cipher import AES
-
 # Add project root to path so the package can be imported.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -128,13 +126,11 @@ def extract_att_pdus(packets: list) -> list:
 class TuyaDecoder:
     """Decrypt and decode Tuya BLE frames from a capture."""
 
-    def __init__(self, local_key: str, device_id: str, uuid: str) -> None:
+    def __init__(self, local_key: str) -> None:
         self._login_key = derive_login_key(local_key)
         self._local_key_prefix = local_key[:6].encode("ascii")
-        self._device_id = device_id
-        self._uuid = uuid
-        self._session_key: bytes | None = None
-        self._srand: bytes | None = None
+        self._session_key = None
+        self._srand = None
         self._tx_counter = 0
         self._rx_counter = 0
         self._input_buffer = bytearray()
@@ -330,7 +326,7 @@ def main() -> int:
     print(f"Extracted {len(pdus)} ATT PDUs")
     print()
 
-    decoder = TuyaDecoder(config.local_key, config.device_id, config.uuid)
+    decoder = TuyaDecoder(config.local_key)
 
     # Only process writes to 2B11 and notifications from 2B10.
     for direction, att in pdus:

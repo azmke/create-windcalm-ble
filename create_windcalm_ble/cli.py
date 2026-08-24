@@ -119,7 +119,11 @@ async def _run_command(args: argparse.Namespace) -> int:
             return 0
 
         if args.command == "direction":
-            direction = FanDirection.FORWARD if args.value == "forward" else FanDirection.REVERSE
+            direction = (
+                FanDirection.FORWARD
+                if args.value == "forward"
+                else FanDirection.REVERSE
+            )
             await fan.set_direction(direction)
             print(f"Fan direction set to {args.value}.")
             return 0

@@ -643,6 +643,8 @@ class WindCalmDevice:
             dp_type = payload[pos + 1]
             dp_len = payload[pos + 2]
             pos += 3
+            if pos + dp_len > len(payload):
+                raise WindCalmProtocolError("Datapoint payload is truncated")
             raw = payload[pos : pos + dp_len]
             pos += dp_len
             try:
@@ -652,6 +654,8 @@ class WindCalmDevice:
             self._datapoints[dp_id] = DataPoint(
                 id=dp_id, type=DataPointType(dp_type), value=value
             )
+        if pos != len(payload):
+            raise WindCalmProtocolError("Datapoint payload has a trailing fragment")
 
     def _reset_input(self) -> None:
         """Reset the subpacket reassembly state."""
@@ -682,6 +686,8 @@ class WindCalmDevice:
         if packet_num == 0:
             self._input_buffer = bytearray()
             self._input_expected_length, pos = _unpack_varint(data, pos)
+            if pos >= len(data):
+                raise WindCalmProtocolError("Missing subpacket version")
             pos += 1  # skip the version byte
             self._input_expected_packet_num = 1
         else:

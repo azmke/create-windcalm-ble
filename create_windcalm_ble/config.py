@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
 from dotenv import load_dotenv
 
@@ -53,7 +52,7 @@ def _require(name: str, value: Optional[str]) -> str:
 
 def load_config(
     env_file: Optional[str] = None,
-    env: Optional[dict] = None,
+    env: Optional[Mapping[str, str]] = None,
 ) -> Config:
     """Load and validate the device configuration.
 
@@ -91,8 +90,3 @@ def load_config(
         category=source.get("WIND_CATEGORY", "fsd"),
         name=source.get("WIND_NAME", "WindCalm Ceiling Fan"),
     )
-
-
-def default_env_path() -> Path:
-    """Return the default path to the ``.env`` file in the project root."""
-    return Path(__file__).resolve().parent.parent / ".env"

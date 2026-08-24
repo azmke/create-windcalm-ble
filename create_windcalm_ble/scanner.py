@@ -42,11 +42,11 @@ async def scan(timeout: float = 5.0) -> List[ScanResult]:
         ScanResult(
             address=device.address,
             name=device.name or "",
-            rssi=device.rssi if device.rssi is not None else -100,
+            rssi=device.rssi,
         )
         for device in devices
     ]
-    results.sort(key=lambda r: r.rssi, reverse=True)
+    results.sort(key=lambda r: r.rssi if r.rssi is not None else -100, reverse=True)
     return results
 
 
