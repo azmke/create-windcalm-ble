@@ -106,7 +106,7 @@ synchronization, datapoints, and connection lifetime behavior.
 
 ## License
 
-This project is released under the MIT License. See [`LICENSE`](LICENSE) for
+This project is released under the MIT License. See [LICENSE](LICENSE) for
 the full license text.
 
 ## Disclaimer
