@@ -21,5 +21,12 @@ dependencies = [
 [project.scripts]
 windcalm = "create_windcalm_ble.cli:main"
 
+[tool.setuptools]
+package-dir = {"" = "custom_components/create_windcalm_ble"}
+
 [tool.setuptools.packages.find]
+where = ["custom_components/create_windcalm_ble"]
 include = ["create_windcalm_ble*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

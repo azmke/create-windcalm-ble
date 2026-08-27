@@ -1,0 +1,52 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Dieser Deckenventilator ist bereits konfiguriert.",
+      "reauth_successful": "Die Zugangsdaten wurden aktualisiert.",
+      "reconfigure_successful": "Die Konfiguration wurde aktualisiert."
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Deckenventilator fehlgeschlagen.",
+      "invalid_auth": "Der Deckenventilator hat die Zugangsdaten abgelehnt.",
+      "invalid_input": "Die eingegebenen Gerätedaten sind ungültig.",
+      "no_bluetooth_adapter": "Es ist kein verbindungsfähiger Bluetooth-Adapter oder Proxy verfügbar.",
+      "unsupported_device": "Das Bluetooth-Gerät ist kein unterstützter CREATE-WindCalm-Ventilator."
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "device_id": "Geräte-ID",
+          "local_key": "Lokaler Schlüssel",
+          "uuid": "UUID"
+        },
+        "description": "Gib die aktuellen Tuya-BLE-Zugangsdaten ein."
+      },
+      "reconfigure": {
+        "data": {
+          "device_id": "Geräte-ID",
+          "local_key": "Neuer lokaler Schlüssel (leer lassen zum Beibehalten)",
+          "mac": "MAC-Adresse",
+          "name": "Name",
+          "uuid": "UUID"
+        }
+      },
+      "user": {
+        "data": {
+          "device_id": "Geräte-ID",
+          "local_key": "Lokaler Schlüssel",
+          "mac": "MAC-Adresse",
+          "name": "Name",
+          "uuid": "UUID"
+        },
+        "description": "Gib die lokalen Tuya-BLE-Zugangsdaten für einen Deckenventilator ein."
+      }
+    }
+  },
+  "entity": {
+    "light": {
+      "light": {
+        "name": "Licht"
+      }
+    }
+  }
+}

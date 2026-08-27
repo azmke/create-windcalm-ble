@@ -1,0 +1,16 @@
+{
+  "domain": "create_windcalm_ble",
+  "name": "CREATE WindCalm BLE",
+  "codeowners": ["@azmke"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/azmke/create-windcalm-ble",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/azmke/create-windcalm-ble/issues",
+  "requirements": [
+    "bleak-retry-connector==4.6.3",
+    "pycryptodome==3.23.0"
+  ],
+  "version": "0.2.0"
+}

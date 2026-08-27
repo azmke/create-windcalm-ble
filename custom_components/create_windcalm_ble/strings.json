@@ -1,0 +1,52 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This ceiling fan is already configured.",
+      "reauth_successful": "Credentials updated successfully.",
+      "reconfigure_successful": "Configuration updated successfully."
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the ceiling fan.",
+      "invalid_auth": "The ceiling fan rejected the credentials.",
+      "invalid_input": "The entered device information is invalid.",
+      "no_bluetooth_adapter": "No connectable Bluetooth adapter or proxy is available.",
+      "unsupported_device": "The Bluetooth device is not a supported CREATE WindCalm fan."
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "device_id": "Device ID",
+          "local_key": "Local key",
+          "uuid": "UUID"
+        },
+        "description": "Enter the current Tuya BLE credentials."
+      },
+      "reconfigure": {
+        "data": {
+          "device_id": "Device ID",
+          "local_key": "New local key (leave empty to keep current)",
+          "mac": "MAC address",
+          "name": "Name",
+          "uuid": "UUID"
+        }
+      },
+      "user": {
+        "data": {
+          "device_id": "Device ID",
+          "local_key": "Local key",
+          "mac": "MAC address",
+          "name": "Name",
+          "uuid": "UUID"
+        },
+        "description": "Enter the local Tuya BLE credentials for one ceiling fan."
+      }
+    }
+  },
+  "entity": {
+    "light": {
+      "light": {
+        "name": "Light"
+      }
+    }
+  }
+}
