@@ -6,7 +6,12 @@ depend on Home Assistant, WiFi, or the Tuya cloud.
 """
 
 from .config import Config, ConfigError, load_config
-from .device import WindCalmDevice, WindCalmError
+from .device import (
+    WindCalmAuthenticationError,
+    WindCalmDevice,
+    WindCalmError,
+    WindCalmProtocolError,
+)
 from .models import (
     DataPoint,
     DataPointType,
@@ -27,9 +32,11 @@ __all__ = [
     "FanState",
     "FanStatus",
     "WindCalmDevice",
+    "WindCalmAuthenticationError",
     "WindCalmError",
+    "WindCalmProtocolError",
     "WorkMode",
     "load_config",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

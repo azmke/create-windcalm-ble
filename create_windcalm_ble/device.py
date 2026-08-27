@@ -30,7 +30,7 @@ import logging
 import secrets
 import struct
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from bleak import BleakClient
 from bleak.exc import BleakError
@@ -79,7 +79,9 @@ DP_FAN_DIRECTION = 63
 DP_COUNTDOWN = 64
 DP_LIGHT_SWITCH = 20
 DP_WORK_MODE = 21
-DP_TEMPERATURE = 23
+DP_LIGHT_TEMPERATURE = 23
+# Backwards-compatible name used by versions before 0.2.0.
+DP_TEMPERATURE = DP_LIGHT_TEMPERATURE
 
 # Response timeout for a single command.
 RESPONSE_TIMEOUT = 10.0
@@ -135,6 +137,28 @@ class WindCalmProtocolError(WindCalmError):
     """Raised when the device sends an unexpected or malformed frame."""
 
 
+class WindCalmAuthenticationError(WindCalmError):
+    """Raised when the device rejects the supplied Tuya credentials."""
+
+
+ClientFactory = Callable[[Any, Callable[[BleakClient], None]], Awaitable[BleakClient]]
+StatusCallback = Callable[[FanStatus], None]
+DisconnectCallback = Callable[[], None]
+
+
+async def _default_client_factory(
+    address_or_ble_device: Any,
+    disconnected_callback: Callable[[BleakClient], None],
+) -> BleakClient:
+    """Create and connect a normal Bleak client."""
+    client = BleakClient(
+        address_or_ble_device,
+        disconnected_callback=disconnected_callback,
+    )
+    await client.connect()
+    return client
+
+
 class WindCalmDevice:
     """A client for a single WindCalm ceiling fan over BLE.
 
@@ -146,8 +170,19 @@ class WindCalmDevice:
             await fan.set_power(True)
     """
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self,
+        config: Config,
+        ble_device: Any = None,
+        client_factory: Optional[ClientFactory] = None,
+        status_callback: Optional[StatusCallback] = None,
+        disconnect_callback: Optional[DisconnectCallback] = None,
+    ) -> None:
         self._config = config
+        self._ble_device = ble_device
+        self._client_factory = client_factory or _default_client_factory
+        self._status_callback = status_callback
+        self._disconnect_callback = disconnect_callback
         self._client: Optional[BleakClient] = None
         self._login_key: Optional[bytes] = None
         self._session_key: Optional[bytes] = None
@@ -164,7 +199,20 @@ class WindCalmDevice:
         # Responses are queued with their ACK sequence and command because
         # unsolicited TIME/DP frames may arrive while a command is pending.
         self._notify_queue: asyncio.Queue = asyncio.Queue()
+        self._write_lock = asyncio.Lock()
+        self._transaction_lock = asyncio.Lock()
+        self._report_event = asyncio.Event()
+        self._report_generation = 0
         self._connected = False
+
+    @property
+    def is_connected(self) -> bool:
+        """Return whether the application session is connected."""
+        return self._connected
+
+    def set_ble_device(self, ble_device: Any) -> None:
+        """Use a newly resolved BLE device for the next connection."""
+        self._ble_device = ble_device
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -180,20 +228,24 @@ class WindCalmDevice:
         """Connect to the device and perform the Tuya BLE handshake."""
         if self._connected:
             return
+        self._reset_session()
         try:
-            self._client = BleakClient(self._config.mac)
-            await self._client.connect()
+            target = self._ble_device or self._config.mac
+            self._client = await self._client_factory(target, self._on_disconnect)
             await self._client.start_notify(
                 CHARACTERISTIC_NOTIFY, self._on_notification
             )
             self._connected = True
             await self._handshake()
-        except (BleakError, OSError, asyncio.TimeoutError) as exc:
+        except (BleakError, OSError, asyncio.TimeoutError, WindCalmError) as exc:
             await self.disconnect()
+            if isinstance(exc, WindCalmError):
+                raise
             raise WindCalmError(f"Failed to connect to device: {exc}") from exc
 
     async def disconnect(self) -> None:
         """Disconnect from the device and clean up resources."""
+        self._connected = False
         if self._client is not None:
             try:
                 await self._client.stop_notify(CHARACTERISTIC_NOTIFY)
@@ -204,7 +256,25 @@ class WindCalmDevice:
             except (BleakError, OSError):
                 pass
             self._client = None
+
+    def _on_disconnect(self, client: BleakClient) -> None:
+        """Handle an unexpected Bleak disconnect."""
+        if client is not self._client:
+            return
         self._connected = False
+        if self._disconnect_callback is not None:
+            self._disconnect_callback()
+
+    def _reset_session(self) -> None:
+        """Reset all state that belongs to one BLE application session."""
+        self._login_key = None
+        self._session_key = None
+        self._srand = None
+        self._tx_counter = 1
+        self._notify_queue = asyncio.Queue()
+        self._report_event.clear()
+        self._report_generation = 0
+        self._reset_input()
 
     # ------------------------------------------------------------------
     # Handshake
@@ -218,7 +288,9 @@ class WindCalmDevice:
         self._session_key = derive_session_key(
             self._config.login_key, self._srand
         )
-        await self._send_command(CMD_PAIR, self._build_pairing_request())
+        result = await self._send_command(CMD_PAIR, self._build_pairing_request())
+        if result and result[0] not in (0x00, 0x02):
+            raise WindCalmAuthenticationError("Device rejected the credentials")
 
     def _build_pairing_request(self) -> bytes:
         """Build the pairing request payload.
@@ -239,21 +311,17 @@ class WindCalmDevice:
     # ------------------------------------------------------------------
     async def get_status(self) -> FanStatus:
         """Request the current datapoints and return a decoded status."""
-        await self._send_command(CMD_DEVICE_STATUS, b"")
-        # The device replies with a one-byte acknowledgement; the current
-        # datapoints follow in an unsolicited 0x8001 report. Drain incoming
-        # notifications briefly until the datapoints have been parsed.
-        deadline = asyncio.get_event_loop().time() + 2.0
-        while not self._datapoints:
-            remaining = deadline - asyncio.get_event_loop().time()
-            if remaining <= 0:
-                break
-            try:
-                await asyncio.wait_for(
-                    self._notify_queue.get(), timeout=remaining
-                )
-            except asyncio.TimeoutError:
-                break
+        async with self._transaction_lock:
+            generation = self._report_generation
+            self._report_event.clear()
+            await self._send_command_locked(CMD_DEVICE_STATUS, b"")
+            if self._report_generation == generation:
+                try:
+                    await asyncio.wait_for(self._report_event.wait(), timeout=2.0)
+                except asyncio.TimeoutError as exc:
+                    raise WindCalmError(
+                        "Timed out waiting for a fresh status report"
+                    ) from exc
         return self._decode_status()
 
     async def set_power(self, on: bool) -> None:
@@ -285,6 +353,14 @@ class WindCalmDevice:
     async def set_work_mode(self, mode: WorkMode) -> None:
         """Set the light work mode."""
         await self._set_datapoint(DP_WORK_MODE, DataPointType.ENUM, int(mode))
+
+    async def set_light_temperature(self, value: int) -> None:
+        """Set the raw light-temperature value (0-1000)."""
+        if not 0 <= value <= 1000:
+            raise ValueError("Light temperature must be between 0 and 1000")
+        await self._set_datapoint(
+            DP_LIGHT_TEMPERATURE, DataPointType.VALUE, int(value)
+        )
 
     # ------------------------------------------------------------------
     # Datapoint encoding / decoding
@@ -342,8 +418,8 @@ class WindCalmDevice:
                 status.light_on = bool(dp.value)
             elif dp.id == DP_WORK_MODE:
                 status.work_mode = WorkMode(int(dp.value))
-            elif dp.id == DP_TEMPERATURE:
-                status.temperature = int(dp.value)
+            elif dp.id == DP_LIGHT_TEMPERATURE:
+                status.light_temperature = int(dp.value)
         return status
 
     # ------------------------------------------------------------------
@@ -389,20 +465,20 @@ class WindCalmDevice:
         WindCalmError
             If the command times out or the device returns an error.
         """
-        if self._client is None or not self._connected:
-            raise WindCalmError("Device is not connected")
-
-        packets = self._build_packets(code, payload, response_to)
-        for packet in packets:
-            await self._client.write_gatt_char(
-                CHARACTERISTIC_WRITE, packet, response=False
-            )
-
         if not wait_for_response:
+            await self._write_command(code, payload, response_to)
             return b""
 
+        async with self._transaction_lock:
+            return await self._send_command_locked(code, payload, response_to)
+
+    async def _send_command_locked(
+        self, code: int, payload: bytes, response_to: int = 0
+    ) -> bytes:
+        """Send one command while the caller holds the transaction lock."""
+        expected_seq = await self._write_command(code, payload, response_to)
+
         # Wait for the response acknowledging this exact sequence number.
-        expected_seq = self._tx_counter - 1
         deadline = asyncio.get_event_loop().time() + RESPONSE_TIMEOUT
         while True:
             remaining = deadline - asyncio.get_event_loop().time()
@@ -420,6 +496,21 @@ class WindCalmDevice:
             if response_ack == expected_seq and response_code == code:
                 return response_payload
 
+    async def _write_command(
+        self, code: int, payload: bytes, response_to: int = 0
+    ) -> int:
+        """Write a complete, non-interleaved command and return its sequence."""
+        if self._client is None or not self._connected:
+            raise WindCalmError("Device is not connected")
+        async with self._write_lock:
+            expected_seq = self._tx_counter
+            packets = self._build_packets(code, payload, response_to)
+            for packet in packets:
+                await self._client.write_gatt_char(
+                    CHARACTERISTIC_WRITE, packet, response=False
+                )
+        return expected_seq
+
     async def _send_device_info_request(self) -> DeviceInfo:
         """Send the device-info request and parse the reply.
 
@@ -429,12 +520,7 @@ class WindCalmDevice:
         if self._client is None or not self._connected:
             raise WindCalmError("Device is not connected")
 
-        packets = self._build_packets(CMD_DEVICE_INFO, b"")
-        expected_seq = self._tx_counter - 1
-        for packet in packets:
-            await self._client.write_gatt_char(
-                CHARACTERISTIC_WRITE, packet, response=False
-            )
+        expected_seq = await self._write_command(CMD_DEVICE_INFO, b"")
 
         deadline = asyncio.get_event_loop().time() + RESPONSE_TIMEOUT
         while True:
@@ -586,16 +672,20 @@ class WindCalmDevice:
 
         payload = inner[12:data_end]
         _LOGGER.debug(
-            "Received frame: seq=%s ack=%s code=0x%04x len=%s payload=%s",
-            seq, ack, code, length, payload.hex(),
+            "Received frame: seq=%s ack=%s code=0x%04x len=%s",
+            seq, ack, code, length,
         )
 
         # Un-acknowledged report from the device: parse datapoints.
         if code == CMD_DP_REPORT:
             self._parse_datapoints(payload)
+            self._report_generation += 1
+            self._report_event.set()
+            if self._status_callback is not None:
+                self._status_callback(self._decode_status())
             # Acknowledge the report with a success byte (matches the
             # official Tuya app capture: payload = 0x00).
-            asyncio.create_task(
+            self._create_response_task(
                 self._send_command(
                     CMD_DP_REPORT, b"\x00", response_to=seq,
                     wait_for_response=False,
@@ -611,7 +701,7 @@ class WindCalmDevice:
             timestamp = str(int(time.time() * 1000)).encode("ascii")
             timezone = -int(time.timezone / 36)
             data = timestamp + struct.pack(">h", timezone)
-            asyncio.create_task(
+            self._create_response_task(
                 self._send_command(
                     code, data, response_to=seq, wait_for_response=False
                 )
@@ -625,7 +715,7 @@ class WindCalmDevice:
                 t.tm_year % 100, t.tm_mon, t.tm_mday,
                 t.tm_hour, t.tm_min, t.tm_sec, t.tm_wday, timezone,
             )
-            asyncio.create_task(
+            self._create_response_task(
                 self._send_command(
                     code, data, response_to=seq, wait_for_response=False
                 )
@@ -634,6 +724,21 @@ class WindCalmDevice:
 
         # Normal response to a command we sent.
         self._notify_queue.put_nowait((ack, code, payload))
+
+    @staticmethod
+    def _create_response_task(coroutine: Awaitable[bytes]) -> None:
+        """Send a protocol response without leaking background exceptions."""
+        task = asyncio.create_task(coroutine)
+
+        def log_failure(done: asyncio.Task) -> None:
+            try:
+                done.result()
+            except asyncio.CancelledError:
+                return
+            except (WindCalmError, BleakError, OSError) as exc:
+                _LOGGER.debug("Unable to send protocol response: %s", exc)
+
+        task.add_done_callback(log_failure)
 
     def _parse_datapoints(self, payload: bytes) -> None:
         """Parse a datapoint report and update the local cache."""

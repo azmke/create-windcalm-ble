@@ -70,7 +70,13 @@ def _build_parser() -> argparse.ArgumentParser:
     countdown.add_argument("value", type=int, help="Minutes (0-540)")
 
     light = sub.add_parser("light", help="Control the light")
-    light.add_argument("value", choices=["on", "off"], help="Light state")
+    light_sub = light.add_subparsers(dest="light_command", required=True)
+    light_sub.add_parser("on", help="Turn the light on")
+    light_sub.add_parser("off", help="Turn the light off")
+    light_temperature = light_sub.add_parser(
+        "temperature", help="Set the raw light-temperature value"
+    )
+    light_temperature.add_argument("value", type=int, help="Value (0-1000)")
 
     mode = sub.add_parser("mode", help="Set the light work mode")
     mode.add_argument(
@@ -134,8 +140,13 @@ async def _run_command(args: argparse.Namespace) -> int:
             return 0
 
         if args.command == "light":
-            await fan.set_light(args.value == "on")
-            print(f"Light turned {args.value}.")
+            if args.light_command in {"on", "off"}:
+                await fan.set_light(args.light_command == "on")
+                print(f"Light turned {args.light_command}.")
+                return 0
+
+            await fan.set_light_temperature(args.value)
+            print(f"Light temperature set to {args.value}.")
             return 0
 
         if args.command == "mode":

@@ -8,10 +8,8 @@ as command-line arguments. This keeps secrets out of shell history and logs.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Optional
-
-from dotenv import load_dotenv
 
 
 class ConfigError(Exception):
@@ -22,13 +20,30 @@ class ConfigError(Exception):
 class Config:
     """Credentials and addressing information for a single WindCalm fan."""
 
-    local_key: str
-    device_id: str
-    uuid: str
+    local_key: str = field(repr=False)
+    device_id: str = field(repr=False)
+    uuid: str = field(repr=False)
     mac: str
     product_id: str = "p8z27dfdwc4riyp9"
     category: str = "fsd"
     name: str = "WindCalm Ceiling Fan"
+
+    def __post_init__(self) -> None:
+        """Validate values required by the Tuya pairing payload."""
+        try:
+            local_key = self.local_key.encode("ascii")
+            device_id = self.device_id.encode("ascii")
+            uuid = self.uuid.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise ConfigError(
+                "Device credentials must contain ASCII characters only"
+            ) from exc
+        if len(local_key) < 6:
+            raise ConfigError("Local key must contain at least 6 characters")
+        if not device_id or not uuid:
+            raise ConfigError("Device ID and UUID must not be empty")
+        if len(uuid) + 6 + len(device_id) > 44:
+            raise ConfigError("UUID and device ID do not fit the Tuya pairing payload")
 
     @property
     def login_key(self) -> bytes:
@@ -74,6 +89,10 @@ def load_config(
     ConfigError
         If a required value is missing.
     """
+    # Keep python-dotenv a CLI-only dependency. Home Assistant constructs
+    # Config directly from its config entry and never calls this function.
+    from dotenv import load_dotenv
+
     if env_file is not None:
         load_dotenv(env_file)
     else:

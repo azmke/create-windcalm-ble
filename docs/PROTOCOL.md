@@ -215,7 +215,7 @@ Fan datapoints:
 |---:|---|---|
 | `20` | light switch | bool |
 | `21` | light work mode | enum: `0 white`, `1 colour`, `2 scene`, `3 music` |
-| `23` | temperature value | signed value; values use the device's temperature scale |
+| `23` | light temperature value | signed value, `0` through `1000`; the device metadata does not specify physical Kelvin values |
 | `60` | fan switch | bool |
 | `62` | fan speed | value, `1` through `6` |
 | `63` | fan direction | enum: `0 forward`, `1 reverse` |

@@ -21,7 +21,10 @@ class ScanResult:
     rssi: Optional[int]
 
     def __repr__(self) -> str:
-        return f"ScanResult(address={self.address!r}, name={self.name!r}, rssi={self.rssi})"
+        return (
+            f"ScanResult(address={self.address!r}, name={self.name!r}, "
+            f"rssi={self.rssi})"
+        )
 
 
 async def scan(timeout: float = 5.0) -> List[ScanResult]:
@@ -37,14 +40,14 @@ async def scan(timeout: float = 5.0) -> List[ScanResult]:
     List[ScanResult]
         Discovered devices, strongest signal first.
     """
-    devices = await BleakScanner.discover(timeout=timeout)
+    devices = await BleakScanner.discover(timeout=timeout, return_adv=True)
     results = [
         ScanResult(
             address=device.address,
             name=device.name or "",
-            rssi=device.rssi,
+            rssi=advertisement_data.rssi,
         )
-        for device in devices
+        for device, advertisement_data in devices.values()
     ]
     results.sort(key=lambda r: r.rssi if r.rssi is not None else -100, reverse=True)
     return results

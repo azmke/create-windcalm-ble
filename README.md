@@ -67,6 +67,9 @@ windcalm countdown 60
 windcalm light on
 windcalm light off
 
+# Set the raw light-temperature DP (0-1000)
+windcalm light temperature 500
+
 # Set the light work mode
 windcalm mode white
 
@@ -94,6 +97,7 @@ async def main():
         print(status)
         await fan.set_speed(3)
         await fan.set_power(True)
+        await fan.set_light_temperature(500)
 
 asyncio.run(main())
 ```

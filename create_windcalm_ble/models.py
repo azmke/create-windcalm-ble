@@ -117,8 +117,18 @@ class FanStatus:
     countdown: Optional[int] = None
     light_on: Optional[bool] = None
     work_mode: Optional[WorkMode] = None
-    temperature: Optional[int] = None
+    light_temperature: Optional[int] = None
     datapoints: Dict[int, DataPoint] = field(default_factory=dict)
+
+    @property
+    def temperature(self) -> Optional[int]:
+        """Return the light-temperature DP using its legacy name."""
+        return self.light_temperature
+
+    @temperature.setter
+    def temperature(self, value: Optional[int]) -> None:
+        """Set the light-temperature DP using its legacy name."""
+        self.light_temperature = value
 
     def __repr__(self) -> str:
         parts = [
@@ -128,6 +138,6 @@ class FanStatus:
             f"countdown={self.countdown}",
             f"light_on={self.light_on}",
             f"work_mode={self.work_mode.name if self.work_mode is not None else None}",
-            f"temperature={self.temperature}",
+            f"light_temperature={self.light_temperature}",
         ]
         return f"FanStatus({', '.join(parts)})"
